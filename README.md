@@ -188,11 +188,21 @@ own native hook configuration:
 | Claude Code | `.claude/settings.json`                             |
 | Gemini CLI  | `.gemini/settings.json` (+ `hooksConfig.enabled`)   |
 | Codex CLI   | `.codex/hooks.json` (+ `[features] hooks` in TOML)  |
-| Copilot CLI | `.github/hooks/wasa.json`                           |
+| Copilot CLI | `~/.copilot/hooks/wasa-record.json` (see below)     |
 | Cursor      | `.cursor/hooks.json`                                |
 
 (Codex exposes no session-end hook, so an unmanaged Codex session gets
 commit-linked checkpoints but closes only through `wasa finish`.)
+
+Copilot CLI is the one agent whose hook cannot live in the repository: it does
+not execute `.github/hooks/*.json`. So the two concerns are split. The hook
+that actually fires is installed once per machine at
+`~/.copilot/hooks/wasa-record.json`, and `.github/hooks/wasa.json` is written
+alongside it purely as the per-repo enablement marker — recording stays
+per-repository, and a Copilot session in a repo that never enabled it is
+dropped. `wasa record disable` removes the marker and leaves the user-level
+hook in place, since it is inert without a marker and still serves every other
+repo that has recording on.
 
 Aider has no hook mechanism at all — its only lifecycle callback fires on
 every response with no session payload — so it gets no per-commit or
