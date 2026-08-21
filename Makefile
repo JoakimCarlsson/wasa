@@ -4,7 +4,6 @@ GOPATH_FWD := $(subst \,/,$(shell go env GOPATH))
 
 GOLANGCI := GOTOOLCHAIN=local $(GOPATH_FWD)/bin/golangci-lint run ./...
 BIN := bin/wasa
-HELPER := bin/git-remote-wasa
 RUN := ./bin/wasa
 
 install:
@@ -21,9 +20,7 @@ lint:
 	$(GOLANGCI)
 
 build:
-	rm -f $(HELPER)
 	go build -buildvcs=false -o $(BIN) ./cmd/wasa
-	go build -buildvcs=false -o $(HELPER) ./cmd/git-remote-wasa
 
 run: build
 	$(RUN)

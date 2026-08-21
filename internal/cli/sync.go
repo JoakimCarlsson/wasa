@@ -94,13 +94,12 @@ func syncArgs(usage string, args []string) (remote string, err error) {
 }
 
 // syncRemote picks the remote a sync travels through when the user named
-// none: the workspace's checkpoint destination, which is origin unless it
-// selected the control-plane remote.
-func syncRemote(repoPath, named string) string {
+// none: the repository's own default remote.
+func syncRemote(_, named string) string {
 	if named != "" {
 		return named
 	}
-	return record.SyncRemote(wasaHome(), repoPath, "", "origin")
+	return record.DefaultRemote
 }
 
 // printSyncSummary reports the refs a push or pull transferred, or that

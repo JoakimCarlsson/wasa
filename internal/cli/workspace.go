@@ -288,9 +288,8 @@ func workspaceList(args []string) error {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, w := range reg.ListWorkspaces() {
 		fmt.Fprintf(
-			tw, "%s\t%s\t%s\t%s\n",
+			tw, "%s\t%s\t%s\n",
 			w.ID, w.Name, w.RepoPath,
-			registry.CheckpointSyncName(w.CheckpointSync),
 		)
 	}
 	return tw.Flush()

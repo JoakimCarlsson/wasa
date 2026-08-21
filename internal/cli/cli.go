@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
-	"github.com/joakimcarlsson/wasa-cli/internal/link/gitremote"
 	"github.com/joakimcarlsson/wasa-cli/internal/record"
 )
 
@@ -18,53 +16,6 @@ const programName = "wasa"
 // process exit code. version is the build-stamped version string.
 func Run(version string, args []string) int {
 	return run(version, args, os.Stdout, os.Stderr)
-}
-
-// RunArgv is Run over a whole argv, dispatching on the name the binary was
-// invoked under before it looks at the arguments.
-//
-// git resolves a remote helper by executable name. wasa is shipped alongside a
-// real git-remote-wasa binary, but a symlink pointing at wasa is how earlier
-// releases installed the helper, so the name is still honoured here and an
-// upgrade never breaks a remote that already works.
-func RunArgv(version string, argv []string) int {
-	return runArgv(version, argv, os.Stdout, os.Stderr)
-}
-
-// RunRemoteHelper is the whole of the git-remote-wasa binary: it runs the
-// remote helper over args and returns the process exit code.
-//
-// It is also what RunArgv's argv[0] branch calls, so a symlinked wasa and the
-// helper binary reach git's remote helper through one path.
-func RunRemoteHelper(args []string) int {
-	return runRemoteHelper(args, os.Stderr)
-}
-
-// runRemoteHelper dispatches one invocation git made by executable name.
-//
-// git spawns the credential helper out of os.Executable(), which for the
-// helper binary is the helper itself: the credential command line it builds is
-// this same binary followed by git-credential-wasa, so that argument has to be
-// answered here as well as by the wasa subcommand.
-func runRemoteHelper(args []string, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == gitremote.CredentialCommand {
-		return runCommand(gitremote.CredentialCommand, args[1:], stderr)
-	}
-	return runCommand(gitremote.BinaryName, args, stderr)
-}
-
-func runArgv(
-	version string,
-	argv []string,
-	stdout, stderr io.Writer,
-) int {
-	if len(argv) == 0 {
-		return run(version, nil, stdout, stderr)
-	}
-	if filepath.Base(argv[0]) == gitremote.BinaryName {
-		return runRemoteHelper(argv[1:], stderr)
-	}
-	return run(version, argv[1:], stdout, stderr)
 }
 
 func run(version string, args []string, stdout, stderr io.Writer) int {
@@ -123,12 +74,7 @@ func run(version string, args []string, stdout, stderr io.Writer) int {
 }
 
 // runCommand runs one registered subcommand and turns its error into an exit
-// code. It is the whole of the process for a command wasa is invoked as rather
-// than asked for — a git remote helper never reaches the flag parsing above.
-//
-// A subprocess wasa delegated to and that already explained its own failure
-// reports a gitremote.ExitError: its status is passed through and nothing is
-// printed, so the terminal shows git's account of what went wrong once.
+// code.
 func runCommand(name string, args []string, stderr io.Writer) int {
 	cmd, ok := lookup(name)
 	if !ok {
@@ -138,10 +84,6 @@ func runCommand(name string, args []string, stderr io.Writer) int {
 	err := cmd.Run(args)
 	if err == nil {
 		return 0
-	}
-	var exit *gitremote.ExitError
-	if errors.As(err, &exit) && exit.Code > 0 {
-		return exit.Code
 	}
 	fmt.Fprintf(stderr, "%s %s: %v\n", programName, name, err)
 	return 1

@@ -16,6 +16,11 @@ import (
 // a hook invocation or a session finish.
 const pushTimeout = 15 * time.Second
 
+// DefaultRemote is where a record syncs when the user names no remote. The
+// record rides along with the repository's own remote, so a checkpoint needs
+// no credential the user does not already have.
+const DefaultRemote = "origin"
+
 // Checkpoint is one record written to the ref: the metadata, the prompt that
 // started the session and the agent conversation so far.
 type Checkpoint struct {
@@ -108,19 +113,18 @@ func dropLegacyRef(repoDir string) {
 	_, _ = gitIn(repoDir, nil, "update-ref", "-d", RefPrefix)
 }
 
-// Push best-effort syncs the named checkpoint refs in one push, to whichever
-// destination the workspace records: origin by default, and the control-plane
-// remote for a workspace that selected it. Offline, no
-// remote or no permission are all expected outcomes; the caller decides
-// whether the returned error is worth one log line. The push is non-atomic,
-// so one ref being rejected does not stop the others. Credential prompts are
-// disabled — terminal and GUI alike — so an unauthenticated push fails fast
-// instead of hanging a hook invocation on a prompt nobody can see.
-func Push(home, repoDir, workspaceID string, refs ...string) error {
+// Push best-effort syncs the named checkpoint refs in one push, to the
+// repository's own DefaultRemote. Offline, no remote or no permission are all
+// expected outcomes; the caller decides whether the returned error is worth
+// one log line. The push is non-atomic, so one ref being rejected does not
+// stop the others. Credential prompts are disabled — terminal and GUI alike —
+// so an unauthenticated push fails fast instead of hanging a hook invocation
+// on a prompt nobody can see.
+func Push(repoDir string, refs ...string) error {
 	if len(refs) == 0 {
 		return nil
 	}
-	remote := SyncRemote(home, repoDir, workspaceID, "origin")
+	remote := DefaultRemote
 	ctx, cancel := context.WithTimeout(context.Background(), pushTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(
@@ -142,14 +146,13 @@ func Push(home, repoDir, workspaceID string, refs ...string) error {
 // so the push runs in its own session and outlives it. No timeout: prompts
 // are disabled, so git either finishes or fails on its own.
 //
-// The refs travel to the workspace's checkpoint destination — origin unless it
-// selected the control plane — exactly as an explicit push does. It stays
-// best-effort either way: a core that is down must not fail a session.
-func pushDetached(home, repoDir, workspaceID string, refs []string) {
+// The refs travel to DefaultRemote exactly as an explicit push does, and stay
+// best-effort either way: a remote that is down must not fail a session.
+func pushDetached(repoDir string, refs []string) {
 	if len(refs) == 0 {
 		return
 	}
-	remote := SyncRemote(home, repoDir, workspaceID, "origin")
+	remote := DefaultRemote
 	cmd := exec.Command(
 		"git", append([]string{"-C", repoDir, "push", remote},
 			refspecs(refs)...)...,

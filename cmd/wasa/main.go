@@ -15,5 +15,5 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(cli.RunArgv(version, os.Args))
+	os.Exit(cli.Run(version, os.Args[1:]))
 }
