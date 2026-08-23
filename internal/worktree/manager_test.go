@@ -443,3 +443,62 @@ func initRepo(t *testing.T, dir string) {
 	run("config", "user.name", "test")
 	run("commit", "--allow-empty", "-m", "initial")
 }
+
+// TestRemoveDeletedRepoForce covers the workspace whose repository the user
+// deleted from disk: no git command can run, so a forced removal has to fall
+// back to deleting the orphaned worktree directory itself rather than
+// surfacing git's "cannot change to" failure and blocking the teardown.
+func TestRemoveDeletedRepoForce(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available on PATH")
+	}
+
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "neuralnet")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	initRepo(t, repo)
+
+	m := New(repo, home, "demo")
+
+	path, err := m.Add("task/230")
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := os.RemoveAll(repo); err != nil {
+		t.Fatalf("RemoveAll repo: %v", err)
+	}
+
+	if !m.RepoGone() {
+		t.Fatal("RepoGone = false for a deleted repository")
+	}
+	if err := m.Remove(path, true); err != nil {
+		t.Fatalf("Remove with deleted repo: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("orphaned worktree dir still present: %v", err)
+	}
+	if err := m.DeleteBranch("task/230", true); err != nil {
+		t.Fatalf("DeleteBranch with deleted repo: %v", err)
+	}
+}
+
+// TestRemoveDeletedRepoWithoutForce checks the unforced path reports the
+// missing repository instead of destroying a directory it cannot inspect.
+func TestRemoveDeletedRepoWithoutForce(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "gone")
+
+	m := New(repo, home, "demo")
+	path := m.Path("task/230")
+
+	err := m.Remove(path, false)
+	var gone *ErrRepoGone
+	if !errors.As(err, &gone) {
+		t.Fatalf("Remove err = %v, want *ErrRepoGone", err)
+	}
+	if gone.RepoDir != repo {
+		t.Fatalf("ErrRepoGone.RepoDir = %q, want %q", gone.RepoDir, repo)
+	}
+}

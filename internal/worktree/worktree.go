@@ -192,6 +192,14 @@ func (m *Manager) List() ([]Worktree, error) {
 // its changes discarded. Removing an already-deleted worktree is a successful
 // no-op: git's failure is swallowed and stale metadata pruned, so a teardown
 // whose worktree vanished from disk still completes.
+//
+// A repository that has itself been deleted from disk is handled separately:
+// no git command can run against it, so with force the orphaned worktree
+// directory is deleted outright and the removal succeeds — the branch and its
+// commits died with the repository, so there is nothing left to preserve.
+// Without force the orphan is left alone and the missing repository is
+// reported, so a plain teardown never silently destroys a directory it cannot
+// inspect.
 func (m *Manager) Remove(target string, force bool) error {
 	if target == "" {
 		return errors.New("target must not be empty")
@@ -200,6 +208,16 @@ func (m *Manager) Remove(target string, force bool) error {
 	path := target
 	if !filepath.IsAbs(target) {
 		path = m.Path(target)
+	}
+
+	if m.RepoGone() {
+		if !force {
+			return &ErrRepoGone{RepoDir: m.RepoDir}
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("remove orphaned worktree %s: %w", path, err)
+		}
+		return nil
 	}
 
 	args := []string{"worktree", "remove"}
@@ -449,6 +467,10 @@ func (m *Manager) DeleteBranch(branch string, force bool) error {
 		return errors.New("branch must not be empty")
 	}
 
+	if m.RepoGone() {
+		return nil
+	}
+
 	if !m.branchExists(branch) {
 		return nil
 	}
@@ -459,6 +481,35 @@ func (m *Manager) DeleteBranch(branch string, force bool) error {
 	}
 	_, err := m.git("branch", flag, branch)
 	return err
+}
+
+// ErrRepoGone reports that the manager's repository no longer exists on disk,
+// so no git command can be run against it. Teardown callers use errors.As to
+// tell this apart from a git failure and to explain that the workspace can
+// only be force-removed.
+type ErrRepoGone struct {
+	// RepoDir is the repository path that is missing.
+	RepoDir string
+}
+
+func (e *ErrRepoGone) Error() string {
+	return fmt.Sprintf(
+		"repository %s no longer exists on disk; re-run with --force to "+
+			"discard the orphaned worktree", e.RepoDir,
+	)
+}
+
+// RepoGone reports whether the manager's repository directory is missing from
+// disk — the user deleted the repository while wasa still tracked it. Every
+// git command the manager runs is a `git -C RepoDir`, which fails outright in
+// that state ("cannot change to ..."), so callers that must still make
+// progress check this first rather than interpreting git's error text.
+func (m *Manager) RepoGone() bool {
+	if m.RepoDir == "" {
+		return false
+	}
+	_, err := os.Stat(m.RepoDir)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // BranchExists reports whether branch exists locally in the repository. Resume

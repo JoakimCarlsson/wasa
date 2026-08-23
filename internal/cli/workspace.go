@@ -224,9 +224,15 @@ func workspaceRemove(args []string) error {
 
 // resolveWorkspace finds the workspace referenced by query, matched first as an
 // exact workspace id, then as a repository path (resolved to its workspace id),
-// then as a unique id prefix. It errors when nothing matches and when an id
-// prefix is ambiguous, rather than guessing. Unlike workspaceForDir it never
-// registers: a path that is not already a workspace is reported as no match.
+// then against the repository paths already registered, then as a unique id
+// prefix. It errors when nothing matches and when an id prefix is ambiguous,
+// rather than guessing. Unlike workspaceForDir it never registers: a path that
+// is not already a workspace is reported as no match.
+//
+// The registered-path match is what lets a workspace whose repository the user
+// deleted still be named by that path: resolveRepo asks git about the
+// directory and fails once it is gone, so without this step the only way to
+// forget a deleted repository would be to look its id up first.
 func resolveWorkspace(
 	reg *registry.Registry,
 	query string,
@@ -243,6 +249,9 @@ func resolveWorkspace(
 		); ok {
 			return w, nil
 		}
+	}
+	if w, ok := workspaceByRepoPath(reg, query); ok {
+		return w, nil
 	}
 
 	var matches []*registry.Workspace
@@ -262,6 +271,31 @@ func resolveWorkspace(
 			query, len(matches),
 		)
 	}
+}
+
+// workspaceByRepoPath finds the workspace whose registered repository path is
+// query, comparing cleaned absolute paths so a relative or trailing-slash
+// spelling still matches. It touches neither git nor the filesystem, so it
+// works for a repository that no longer exists.
+func workspaceByRepoPath(
+	reg *registry.Registry,
+	query string,
+) (*registry.Workspace, bool) {
+	want, err := filepath.Abs(query)
+	if err != nil {
+		return nil, false
+	}
+	for _, w := range reg.ListWorkspaces() {
+		if w.RepoPath == "" {
+			continue
+		}
+		if registered, err := filepath.Abs(w.RepoPath); err == nil {
+			if registered == want {
+				return w, true
+			}
+		}
+	}
+	return nil, false
 }
 
 func workspaceList(args []string) error {

@@ -1,6 +1,7 @@
 package record
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -139,7 +140,7 @@ func spawnFinalize(_, sid string) {
 // repository is a no-op.
 func Finalize(home, sid string) error {
 	st, ok := loadState(home, sid)
-	if !ok || st.RepoDir == "" {
+	if !ok || st.RepoDir == "" || repoGone(st.RepoDir) {
 		return nil
 	}
 	sign := signPolicyFor(home)
@@ -288,7 +289,11 @@ func Finish(home string, info FinishInfo) error {
 	if repoDir == "" {
 		repoDir = st.RepoDir
 	}
-	if repoDir == "" {
+	if repoDir == "" || repoGone(repoDir) {
+		// The repository was deleted from disk while wasa still tracked the
+		// session. There is nowhere to write the checkpoint to and nothing
+		// left to record — the branch and transcript went with it — so this
+		// is a silent no-op rather than one warning per torn-down session.
 		return nil
 	}
 
@@ -388,6 +393,15 @@ func FinishSession(home, repoDir string, s *registry.Session) {
 	if err != nil {
 		log.Printf("wasa: session %s not recorded: %v", s.ID, err)
 	}
+}
+
+// repoGone reports whether repoDir is missing from disk. Every git command a
+// checkpoint write runs is a `git -C repoDir`, which fails outright once the
+// user has deleted the repository, so recording checks first and degrades to
+// writing nothing at all.
+func repoGone(repoDir string) bool {
+	_, err := os.Stat(repoDir)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // baseExe reduces a launch program ("/usr/bin/claude --resume") to its base
