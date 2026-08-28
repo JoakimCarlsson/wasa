@@ -250,6 +250,19 @@ func TestFinishOutsideRepoIsNil(t *testing.T) {
 	}
 }
 
+// TestFinishDeletedRepoIsNil covers the repository the user deleted while wasa
+// still tracked its sessions. Every git command a checkpoint write runs is a
+// git -C repoDir, so each session used to emit a "not recorded: cannot change
+// to ..." warning during a workspace teardown — dozens of lines for one
+// deleted repo. There is nothing left to record, so it is a silent no-op.
+func TestFinishDeletedRepoIsNil(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "neuralnet")
+	err := Finish(t.TempDir(), FinishInfo{SessionID: "s", RepoDir: gone})
+	if err != nil {
+		t.Errorf("Finish against a deleted repo = %v, want nil", err)
+	}
+}
+
 // TestHandleEventStripsSeededPreambleFromIntent covers the live recording path,
 // which is the one that actually runs: the hook reports the prompt verbatim, so
 // a seeded prompt arrives with wasa's <context> preambles ahead of the request.
